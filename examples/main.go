@@ -4,25 +4,36 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
-	"github.com/whyrusleeping/hellabot"
+	"autronix.com/hellabot"
 	log "gopkg.in/inconshreveable/log15.v2"
 )
 
-var serv = flag.String("server", "irc.coldfront.net:6667", "hostname and port for irc server to connect to")
+var serv = flag.String("server", os.Getenv("SERVER_HOST"), "hostname and port for irc server to connect to")
 var nick = flag.String("nick", "hellabot", "nickname for the bot")
 
 func main() {
 	flag.Parse()
 
-	hijackSession := func(bot *hbot.Bot) {
+	botOptions := func(bot *hbot.Bot) {
+		bot.SSL = true
+		//bot.SASL = true
+		bot.Password = os.Getenv("SERVER_PASS")
+		bot.TLSConfig.InsecureSkipVerify = true
+		bot.V3Cap = true
+		bot.CapReqs = append([]string{":server-time", "message-tags"})
+	}
+
+	/*hijackSession := func(bot *hbot.Bot) {
 		bot.HijackSession = true
-	}
+	}*/
 	channels := func(bot *hbot.Bot) {
-		bot.Channels = []string{"#test"}
+		bot.Channels = strings.Split(os.Getenv("CHANNELS"), ",")
 	}
-	irc, err := hbot.NewBot(*serv, *nick, hijackSession, channels)
+	irc, err := hbot.NewBot(*serv, *nick, channels, botOptions)
 	if err != nil {
 		panic(err)
 	}

@@ -73,3 +73,5 @@ var Mpc = hbot.Trigger{
 		return true
 	},
 }
+
+//*/

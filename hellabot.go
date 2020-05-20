@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/autronix/irc"
 	log "gopkg.in/inconshreveable/log15.v2"
 	logext "gopkg.in/inconshreveable/log15.v2/ext"
-	"gopkg.in/sorcix/irc.v1"
 
 	"bytes"
 	"crypto/tls"
@@ -56,6 +56,9 @@ type Bot struct {
 	PingTimeout time.Duration
 
 	TLSConfig tls.Config
+
+	V3Cap   bool
+	CapReqs []string
 }
 
 func (bot *Bot) String() string {
@@ -79,6 +82,8 @@ func NewBot(host, nick string, options ...func(*Bot)) (*Bot, error) {
 		SASL:          false,
 		Channels:      []string{"#test"},
 		Password:      "",
+		V3Cap:         false,
+		CapReqs:       []string{},
 	}
 	for _, option := range options {
 		option(&bot)
@@ -127,7 +132,9 @@ func (bot *Bot) handleIncomingMessages() {
 		// Disconnect if we have seen absolutely nothing for 300 seconds
 		bot.con.SetDeadline(time.Now().Add(bot.PingTimeout))
 		msg := ParseMessage(scan.Text())
-		bot.Debug("Incoming", "raw", scan.Text(), "msg.To", msg.To, "msg.From", msg.From, "msg.Params", msg.Params, "msg.Trailing", msg.Trailing)
+		fmt.Printf("Full: %+v\n", msg)
+		//bot.Debug(fmt.Sprintf("Full: %+v", msg))
+		bot.Debug("Incoming", "raw", scan.Text(), "msg.To", msg.To, "msg.From", msg.From, "msg.Params", msg.Params, "msg.Trailing", msg.Trailing, "msg.Tags", msg.Tags)
 		go func() {
 			for _, h := range bot.handlers {
 				if h.Handle(bot, msg) {
@@ -177,6 +184,7 @@ func (bot *Bot) SASLAuthenticate(user, pass string) {
 	encpass := base64.StdEncoding.EncodeToString(out)
 	bot.Send("AUTHENTICATE " + encpass)
 	bot.Send("AUTHENTICATE +")
+	bot.processCapReqs()
 	bot.Send("CAP END")
 }
 
@@ -196,9 +204,23 @@ func (bot *Bot) StandardRegistration() {
 	if bot.Password != "" {
 		bot.Send("PASS " + bot.Password)
 	}
+
+	capReqCount := len(bot.CapReqs)
+
 	bot.Debug("Sending standard registration")
+	// Send CAP REQ commands
+	if capReqCount > 0 {
+		bot.processCapReqs()
+	}
+
 	bot.sendUserCommand(bot.Nick, bot.Nick, "8")
 	bot.SetNick(bot.Nick)
+
+	// Send CAP END Command
+	if capReqCount > 0 {
+		bot.Debug("End Capability Negotiation")
+		bot.Send(fmt.Sprintf("CAP END"))
+	}
 }
 
 // Set username, real name, and mode
@@ -210,6 +232,14 @@ func (bot *Bot) sendUserCommand(user, realname, mode string) {
 func (bot *Bot) SetNick(nick string) {
 	bot.Nick = nick
 	bot.Send(fmt.Sprintf("NICK %s", nick))
+}
+
+func (bot *Bot) processCapReqs() {
+	bot.Debug("Capability Negotiation")
+	bot.Send("CAP LS")
+	for _, s := range bot.CapReqs {
+		bot.Send(fmt.Sprintf("CAP REQ %v", s))
+	}
 }
 
 // Run starts the bot and connects to the server. Blocks until we disconnect from the server.
@@ -409,8 +439,11 @@ type Message struct {
 	// Content generally refers to the text of a PRIVMSG
 	Content string
 
-	//Time at which this message was recieved
+	// Time at which this message was recieved
 	TimeStamp time.Time
+
+	// Server Timemestamp - message indicated as received by the server
+	ServerTimeStamp time.Time
 
 	// Entity that this message was addressed to (channel or user)
 	To string
@@ -425,7 +458,9 @@ type Message struct {
 // TODO: Maybe just use sorbix/irc if we can be without the custom stuff?
 func ParseMessage(raw string) (m *Message) {
 	m = new(Message)
-	m.Message = irc.ParseMessage(raw)
+	msg := irc.ParseMessage(raw)
+	//fmt.Printf("Msg %+v\n",&msg.Tags)
+	m.Message = msg
 	m.Content = m.Trailing
 
 	if len(m.Params) > 0 {
@@ -437,6 +472,18 @@ func ParseMessage(raw string) (m *Message) {
 		m.From = m.Prefix.Name
 	}
 	m.TimeStamp = time.Now()
+
+	if m.Tags != nil {
+		// Process Time
+		if v, t := m.Tags.GetTag("time"); t {
+			ts, err := time.Parse(time.RFC3339, v)
+			if err == nil {
+				m.ServerTimeStamp = ts
+			} else {
+				fmt.Printf("*** Error: %v\n", err)
+			}
+		}
+	}
 
 	return m
 }
