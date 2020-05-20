@@ -132,7 +132,7 @@ func (bot *Bot) handleIncomingMessages() {
 		// Disconnect if we have seen absolutely nothing for 300 seconds
 		bot.con.SetDeadline(time.Now().Add(bot.PingTimeout))
 		msg := ParseMessage(scan.Text())
-		fmt.Printf("Full: %+v\n", msg)
+		//fmt.Printf("Full: %+v\n", msg)
 		//bot.Debug(fmt.Sprintf("Full: %+v", msg))
 		bot.Debug("Incoming", "raw", scan.Text(), "msg.To", msg.To, "msg.From", msg.From, "msg.Params", msg.Params, "msg.Trailing", msg.Trailing, "msg.Tags", msg.Tags)
 		go func() {
