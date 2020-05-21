@@ -49,6 +49,10 @@ type Bot struct {
 	DialTLS func(network, addr string, tlsConf *tls.Config) (*tls.Conn, error)
 	// This bots nick
 	Nick string
+	// This bots user
+	User string
+	// This bots real name
+	RealName string
 	// Duration to wait between sending of messages to avoid being
 	// kicked by the server for flooding (default 200ms)
 	ThrottleDelay time.Duration
@@ -75,6 +79,8 @@ func NewBot(host, nick string, options ...func(*Bot)) (*Bot, error) {
 		unixastr:      fmt.Sprintf("@%s-%s/bot", host, nick),
 		Host:          host,
 		Nick:          nick,
+		User:          "",
+		RealName:      "",
 		ThrottleDelay: 200 * time.Millisecond,
 		PingTimeout:   300 * time.Second,
 		HijackSession: false,
@@ -213,7 +219,15 @@ func (bot *Bot) StandardRegistration() {
 		bot.processCapReqs()
 	}
 
-	bot.sendUserCommand(bot.Nick, bot.Nick, "8")
+	if bot.User == "" {
+		bot.User = bot.Nick
+	}
+
+	if bot.RealName == "" {
+		bot.RealName = bot.Nick
+	}
+
+	bot.sendUserCommand(bot.User, bot.RealName, "8")
 	bot.SetNick(bot.Nick)
 
 	// Send CAP END Command
